@@ -1,0 +1,453 @@
+---
+title: "HarvardX- Choose Your Own Project: Productivity prediction for Garment Industry"
+author: "Gaurav Shrivastava"
+date: "1/16/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Content: 
+* Report has 6 sections as follows:-
+  + Executive Summary
+  + loading Library & data and basic summary statics
+  + Data Cleaning
+  + Exploratory data analysis
+  + Machine Learning Model Building
+  + Results
+  + Conclusion
+
+# Executive Summary
+
+  * For capstone project of HarvardX, I have taken garment industry data from UCI machine learning database. The Objective of project is to predict productivity of various departments of garment industry. The dataset is taken from following website for the project :-
+  
+  "https://archive.ics.uci.edu/ml/machine-learning-databases/00597/garments_worker_productivity.csv"
+
+  * Dataset has following features/parameters
+    + date : Date in MM-DD-YYYY format
+    + day : Day of the Week
+    + quarter : A portion of the month. A month was divided into four quarters
+    + department : Associated department with the instance
+    + team_no : Associated team number with the instance
+    + no_of_workers : Number of workers in each team
+    + no_of_style_change : Number of changes in the style of a particular product
+    + targeted_productivity : Targeted productivity set by the Authority for each team for each day.
+    + smv : Standard Minute Value, it is the allocated time for a task
+    + wip : Work in progress. Includes the number of unfinished items for products
+    + over_time : Represents the amount of overtime by each team in minutes
+    + incentive : Represents the amount of financial incentive (in BDT) that enables or motivates a particular course of action.
+    + idle_time : The amount of time when the production was interrupted due to several reasons
+    + idle_men : The number of workers who were idle due to production interruption
+    + actual_productivity : The actual % of productivity that was delivered by the workers
+    
+    
+  * Approach used for  building machine learning model included dividing dataset into training and test set. Then, building prediction model on training set. For validation, the model built on training set is used to predict productivity on test set. 80% observation is used for training of the model and 20% of observation from dataset is used for testing. 
+  
+  * To check the accuracy of model root mean square error(RMSE) is estimated and
+  model having lowest RMSE is selected as final machine learning model for the project.
+  
+  * Garment industry is a highly labour-intensive industry with lots of manual processes. Satisfying the huge global demand for garment products is mostly dependent on the production and delivery performance of the employees in the garment manufacturing companies. So, it is highly desirable among the decision makers in the garments industry to track, analyze and predict the productivity performance of the working teams in their factories.
+  
+  * To achieve above business purpose, I classified productivity into 4 categories for proactive decision making from top management. In this project, those categories are ranked as 1,2,3,4 where 4 represents highest productivity group and 1 represents the lowest productivity group.
+  
+  * In following sections, I have explained in details various steps taken to build the machine learning algorithm on dataset.
+
+
+# Loading Library & data and basic summary statics
+
+
+* Following libraries are installed and loaded before start building model programs:
+    library(tidyverse)
+    library(caret)
+    library(ggplot2)
+    library(dslabs)
+    library(ggrepel)
+    library(dplyr)
+    library(lubridate)
+    library(HistData)
+    library(purrr)
+    library(pdftools)
+    library(matrixStats)
+    library(genefilter)
+    library(randomForest)
+    library(readxl)
+
+```{r echo=FALSE, include= FALSE}
+library(tidyverse)
+library(caret)
+library(data.table)
+library(ggplot2)
+library(dslabs)
+library(ggrepel)
+library(dplyr)
+library(lubridate)
+library(HistData)
+library(purrr)
+library(pdftools)
+library(matrixStats)
+library(genefilter)
+library(randomForest)
+library(readxl)
+```
+
+* In this step, I downloaded the dataset file using R codes and understood basic structure and properties of the database. Following code is used to download the file from internet
+
+```{r, include=FALSE}
+
+url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/00597/garments_worker_productivity.csv"
+tmp_filename <- tempfile()
+download.file(url, tmp_filename)
+dat <- read_csv(tmp_filename)
+```
+
+* Dataset has 15 features and 1197 observations. Following is detail about dataset:-
+
+```{r echo=FALSE}  
+dim(dat)
+str(dat)
+```
+
+* First six observation of dataset is as follows. It starts with date and ends with final column which is actual productivity:-
+
+```{r echo=FALSE}
+head(dat)
+```
+
+
+# Data Cleaning
+
+* As next step, I did some data wrangling to change data as per the requirement for modeling.  In this step, I will Change data type of features from character to factor for quarter,department,day and team features using following code:- 
+
+```{r}
+dat<-dat%>% mutate(quarter=as.factor(quarter),
+                   department=as.factor(department),day=as.factor(day),
+                   team=as.factor(team))
+```
+  
+* Next, I identified columns where NA is used and replaced it with appropriate numbers. For identifying columns, I used following code
+  
+```{r}
+i<-1:15
+col_NA<-sapply(i,function(l)
+  dat%>% filter(is.na(dat[,l]))%>% summarise(n=n())
+)
+```
+
+*Following chart showed that only feature number 8 has NA values. Name of that column is "wip". I replaced NA values with 0 using following code
+
+```{r}
+plot(i,col_NA)
+names(dat[col_NA>0])
+dat<-dat%>%mutate(wip=ifelse(is.na(wip),0,wip))
+```
+  
+* First six observations of datasets after data cleaning is follows:- 
+
+```{r echo=FALSE}
+head(dat)
+```
+
+#Exploratory data Analysis:- 
+
+* In this step, I went more deeper in the data by understanding summary statistics and trends between various features. Below is summary statistics of the dataset using following code:-
+
+```{r}
+summary(dat)
+```
+
+* Distinct number of elements in different features of dataset is as follows. Only dataset whose class is factor.
+
+```{r echo=FALSE}  
+dat%>%summarise(n_date=n_distinct(date),n_quarter=n_distinct(quarter),
+                n_department=n_distinct(department),n_day=n_distinct(day),
+                n_team=n_distinct(team))
+```
+
+* Further, I analyzed trends of actual productivity with respect to various parameters:-
+  + Department/team- wise Average actual productivity vs date chart:-
+      Average actual productivity is same across various dates of different functions. Some team has higher productivity and some team has lower productivity. We can say teamwise average productivity per day is constant
+    
+```{r echo=FALSE}
+dat%>%group_by(department)%>%group_by(date)%>%group_by(team)%>%
+  mutate(actual_productivity=mean(actual_productivity))%>%ggplot()+
+  geom_point(aes(date,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+     
+  + Department/team- wise Average actual productivity vs quarter chart:-
+      Average actual productivity is same across various quarters of month for different functions. Some team has higher productivity and some team has lower productivity. We can say teamwise average productivity per quarter is constant
+          
+```{r echo=FALSE}
+dat%>%group_by(quarter)%>%group_by(department)%>%group_by(team)%>%
+  mutate(actual_productivity=mean(actual_productivity))%>%ggplot()+
+  geom_point(aes(quarter,actual_productivity,color=team))+
+  facet_grid(.~department)+ theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+  + Department/team- wise Average actual productivity vs day chart:-
+      Average actual productivity is same across various days for different functions. Some team has higher productivity and some team has lower productivity. We can say teamwise average productivity per day is constant
+    
+```{r echo=FALSE}
+dat%>%group_by(department)%>%group_by(day)%>%group_by(team)%>%
+  mutate(actual_productivity=mean(actual_productivity))%>%ggplot()+
+  geom_point(aes(day,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+  + Department/team- wise Average actual productivity vs average targeted_productivity chart:- 
+  Average actual productivity has increasing trend with average targeted productivity for different functions.
+  
+```{r echo=FALSE}
+dat%>% group_by(team)%>%mutate(actual_productivity=mean(actual_productivity), targeted_productivity=
+                mean(targeted_productivity))%>%ggplot()+
+  geom_point(aes(targeted_productivity,actual_productivity,color=team))+geom_abline()+ facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+  +Department wise actual productivity vs smv chart:-
+  
+      Actual productivity has no trend with smv for different functions.
+  
+```{r echo=FALSE}
+dat%>% ggplot()+
+  geom_point(aes(smv,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+  + Department wise actual productivity vs wip chart:- 
+  
+     Actual productivity has no significant trend with average wip for different functions.
+  
+  
+```{r echo=FALSE}
+dat%>% ggplot()+  geom_boxplot(aes(wip,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+
+  + Department wise actual productivity vs over_time chart:- 
+
+      Actual productivity has no trend with average over_time for different functions.
+  
+```{r echo=FALSE}
+dat%>% ggplot()+
+  geom_boxplot(aes(over_time,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+  + Department wise actual productivity vs incentive chart:- 
+  
+      Actual productivity has no trend with incentive for different functions.
+  
+```{r echo=FALSE}
+dat%>% ggplot()+
+  geom_boxplot(aes(incentive,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+  + Department wise actual productivity vs idle_men chart:-
+  
+      Actual productivity has no trend with idle_men for different functions.
+
+```{r echo=FALSE}
+dat%>% ggplot()+
+  geom_point(aes(idle_men,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+  + Department wise actual productivity vs no_of_style_change chart:-
+    
+      Actual productivity has no trend with finishing but decreases for sweing department
+
+```{r echo= FALSE}
+dat%>% ggplot()+
+  geom_point(aes(no_of_style_change,actual_productivity,color=team))+
+  facet_grid(department~team)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+ + Department wise actual productivity vs no_of_workers chart:- 
+ 
+    Actual productivity has no visible trend with no_of_workers for different functions
+
+```{r echo=FALSE}
+dat%>% ggplot()+
+  geom_point(aes(no_of_workers,actual_productivity,color=team))+
+  facet_grid(.~department)+theme(axis.text.x=element_text(angle = 90,hjust=1))
+```
+
+# Machine Learning Model Building
+
+  * Before creating machine learning algorithm, we modify the dataset by classifying actual productivity in 4 classes from 1 to 4 as follows:-
+
+    + 4 means actual productivity 0.8, 
+    + 3 means productivity is between 0.6 and 0.8, 
+    + 2 means productivity is between 0.4 and 0.6 and 
+    + 1 means productivity is less than 0.4
+    
+  * Removing date and actual productivity feature for model building using following code
+
+```{r}
+rev_dat<-dat%>%mutate(rev_act_prod=ifelse(actual_productivity>0.8,4,
+                                    ifelse(actual_productivity>0.6,3,
+                                    ifelse(actual_productivity>0.4,2,1))))%>%
+  select(-actual_productivity,-date)
+```
+
+    + Top six rows of revised dataset is as follows:-
+    
+```{r echo=FALSE}
+head(rev_dat)
+```
+
+* Creating training and test datasets for building machine learning algorithm. 80% observation is for training of the model and 20% for testing. I used following code for data partition.
+
+```{r,warning=FALSE}
+set.seed(1, sample.kind = "Rounding") 
+test_index <- createDataPartition(y=rev_dat$rev_act_prod, times = 1, p = 0.2, list = FALSE)
+train_set <- rev_dat[-test_index,]
+test_set <- rev_dat[test_index,]
+```
+  + Top six rows of training dataset is follows:-
+```{r echo= FALSE}
+head(train_set)
+```
+  + Top six rows of test dataset is follows:-
+```{r echo= FALSE}
+head(test_set)
+```
+
+  * Defining RMSE for model testing using following code:- 
+```{r}
+RMSE <- function(true_ratings, predicted_ratings){
+  sqrt(mean((true_ratings - predicted_ratings)^2))
+}
+```
+
+  * Linear regression model: - used following code
+```{r,warning=FALSE}
+fit_lm <- train(rev_act_prod ~ ., method="lm",data = train_set)
+```
+   
+    + summary of linear regression model is as follows:-
+    
+```{r,warning=FALSE}
+summary(fit_lm)
+```
+
+  * RMSE value on validating lm model on test data set is as follows:-
+
+```{r,warning=FALSE}
+lm_preds <- predict(fit_lm, newdata = test_set)
+rmse_lm <- RMSE(lm_preds, test_set$rev_act_prod)
+rmse_results<-data_frame(method="lm model",RMSE=rmse_lm)
+```
+      + RMSE of Model:-
+```{r echo=FALSE}      
+rmse_results %>% knitr::kable()
+```
+
+  * K-nearest neighbors model:- Used following code for building knn model
+
+```{r,warning=FALSE}
+set.seed(7, sample.kind = "Rounding") 
+tuning <- data.frame(k = seq(3, 21, 2))
+fit_knn <- train(rev_act_prod ~ .,data=train_set,
+                 method = "knn", 
+                 tuneGrid = tuning)
+```
+   
+    + plot of knn model gives best value of tuning parameter on which RMSE of training model is minimum.
+  
+```{r echo= FALSE}
+ggplot(fit_knn)
+```
+    
+    + Summary of knn model built
+```{r echo=FALSE}
+fit_knn$results
+```
+    + best value of tuning parameter is as follows:-
+```{r}
+fit_knn$bestTune
+```
+  
+
+  * Accuracy of the kNN model on the test set was calculated using following code:-
+  
+```{r, warning=FALSE}
+knn_preds <- predict(fit_knn, test_set)
+rmse_knn <- RMSE(knn_preds, test_set$rev_act_prod)
+rmse_results<-bind_rows(rmse_results,data_frame(method="knn_model",RMSE=rmse_knn))
+rmse_results %>% knitr::kable()
+```
+
+  * Random forest model:- Used below code for training the model-
+  
+```{r,warning=FALSE}
+
+set.seed(9, sample.kind = "Rounding") 
+tuning <- data.frame(mtry = c(5,7,9,11))
+fit_rf <- train(rev_act_prod ~ .,data=train_set,
+                method = "rf",
+                tuneGrid = tuning,
+               importance = TRUE)
+```
+ 
+  * plot of random forest model tuning parameter where RMSE value is minimum for trained model
+  
+```{r echo=FALSE}
+plot(fit_rf)
+```
+ 
+  * Best value of tuning parameter is as follows:- 
+  
+```{r echo=FALSE}
+fit_rf$bestTune
+```
+ 
+  * Plot of final model shows that model trained has converged for given set of parameters as per following chart
+  
+```{r }
+plot(fit_rf$finalModel)
+```
+
+  * The accuracy of the random forest model on the test set is estimated using RMSE formula as per following code:- 
+  
+```{r }
+rf_preds <- predict(fit_rf, test_set)
+rmse_rf <- RMSE(rf_preds, test_set$rev_act_prod)
+rmse_results<-bind_rows(rmse_results,data_frame(method="rf_model",RMSE=rmse_rf))
+rmse_results %>% knitr::kable()
+```
+
+    * Most important variable in the random forest model is obtained using following code. We can see incentive and targeted productivit plays important role in productivity.
+    
+```{r }
+varImp(fit_rf)
+```
+
+  * Summary of all the models:
+
+```{r, echo=FALSE}
+rmse_results
+```
+
+# Results
+
+```{r, echo=FALSE}
+rmse_results
+```
+
+Results of machine learning algorithm shows that best model for predicting productivity of different function in garment sector is random forest model because it has lowest RMSE value.Further, productivity can be managed by incentive and targeted productivity.
+
+# Conclusion
+
+Productivity is important parameter in labor intensive industry. Using this machine learning algorithm, management can take action proactively to avoid any situation in which business has to suffer because of order or revenue loss due to delay in order fulfillment because of low productivity environment.  
+
+    + Predicted productivity = 4 ==> Very High productivity ==> Low Priority 
+    + Predicted productivity = 3 ==> High Productivity      ==> OK
+    + Predicted productivity = 2 ==> Poor Productivity      ==> Review
+    + Predicted productivity = 1 ==> Very poor Productivity ==> High priority
+    
+Above table shows a scenario based on which management can decide what action to be taken so that productivity doesnt go down.
+
+
